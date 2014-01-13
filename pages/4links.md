@@ -9,7 +9,8 @@ permalink: links.html
 
 [Markdown Syntax][]
 
-[jekyll quick start]
+[jekyll quick start][]
+
 
 [markdown Syntax]: http://wowubuntu.com/markdown/ "markdown语法"
-[jekyll quick start]: http://jekyllbootstrap.com/usage/jekyll-quick-start.html ""
+[jekyll quick start]: http://jekyllbootstrap.com/usage/jekyll-quick-start.html 
