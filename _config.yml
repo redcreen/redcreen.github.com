@@ -121,3 +121,7 @@ JB :
  
 
 relative_permalinks: false 
+
+markdown: redcarpet
+redcarpet:
+    extensions: ["fenced_code_blocks", "autolink", "tables", "strikethrough"]

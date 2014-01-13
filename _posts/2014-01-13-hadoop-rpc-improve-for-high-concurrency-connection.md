@@ -18,8 +18,7 @@ namenode2在11.17日早上8点左右出现连接异常，服务变慢。下面�
 ![netstat][net2]    
 
 
-
-```
+```java
 "Socket Reader#5 for port 9000" prio=10 tid=0x000000005e8bd000 nid=0x273 waiting for monitor entry [0x0000000044b10000]
    java.lang.Thread.State: BLOCKED (on object monitor)
     at org.apache.hadoop.ipc.Server.closeConnection(Server.java:1305)
@@ -88,6 +87,14 @@ namenode2在11.17日早上8点左右出现连接异常，服务变慢。下面�
    Locked ownable synchronizers:
     - None
 
+```
+
+``` java
+public void main() {
+ int i = 0;
+}
+
+#comment
 ```
 
 未完待续
