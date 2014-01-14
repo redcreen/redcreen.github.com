@@ -1,0 +1,502 @@
+Index: src/core/org/apache/hadoop/ipc/CompositeByteBuffer.java
+===================================================================
+--- src/core/org/apache/hadoop/ipc/CompositeByteBuffer.java	(revision 0)
++++ src/core/org/apache/hadoop/ipc/CompositeByteBuffer.java	(working copy)
+@@ -0,0 +1,116 @@
++package org.apache.hadoop.ipc;
++
++import java.nio.ByteBuffer;
++import java.util.ArrayList;
++import java.util.Collections;
++import java.util.List;
++
++class CompositeByteBuffer {
++  private final List<ByteBuffer> components = Collections
++      .synchronizedList(new ArrayList<ByteBuffer>(1));
++
++  private int componentMaxSize = 1024 * 1024 * 4;
++  private int componentMinSize = 1024 * 4;
++  private int offset = 0;
++  private int capacity = 0;
++  private int index= 0;
++  
++  public CompositeByteBuffer(int initsize, int componentSize) {
++    this.componentMinSize = initsize;
++    this.componentMaxSize = componentSize;
++    components.add(alloc());
++  }
++
++  public void writeByte(int b) {
++    ensureWrite(1);
++    getNextAvailableComponent().put((byte)b);
++    offset++;
++  }
++
++  public void writeBytes(byte[] b, int off, int len) {
++    ensureWrite(len);
++    while (true) {
++      ByteBuffer bb = getNextAvailableComponent();
++      int remain = bb.remaining();
++      if (len <= remain) {
++        bb.put(b, off, len);
++        offset = offset + len;
++        return ;
++      } else {
++        bb.put(b, off, remain);
++        off = off + remain;
++        len = len - remain;
++        offset = offset + remain;
++      }
++    }
++  }
++  
++  public int readableBytes() {
++    return offset;
++  }
++  
++  public ByteBuffer nioBuffer(int i) {
++    return components.get(i);
++  }
++  
++  public ByteBuffer[] nioBuffers (){
++    return components.toArray(new ByteBuffer[components.size()]);
++  }
++  
++  public int nioBufferCount () {
++    return components.size();
++  }
++
++  private void ensureWrite(int len) {
++    if (offset + len <= capacity) {
++      return ;
++    } else {
++      int remaining = 0;
++      while (true) {
++        ByteBuffer currentbb = components.get(components.size() -1); 
++        remaining = remaining + currentbb.remaining();
++        if (remaining >= len) {
++          return ;
++        } else {
++          components.add(alloc());
++          continue;
++        }
++      }
++    }
++  }
++
++  private ByteBuffer getNextAvailableComponent() {
++    while (true) {
++      ByteBuffer bb = components.get(index);
++      if (bb.remaining() > 0) {
++        return bb;
++      } else {
++        index++;
++        continue;
++      }
++    }
++  }
++
++  private ByteBuffer alloc() {
++    int size;
++    if (capacity > 1024 * 1024) {
++      size = componentMaxSize;
++    } else {
++      size = Math.min(componentMaxSize, componentMinSize << components.size());
++    }
++    this.capacity = this.capacity + size;
++    return ByteBuffer.allocate(size);
++  }
++  public static void  main(String[] args) {
++    CompositeByteBuffer cb = new CompositeByteBuffer(1024*16, 1024 * 1024 * 4);
++    byte[] bytes = new byte[1024*1024];
++    for (int i=0;i<8;i++){
++      cb.writeBytes(bytes, 0, bytes.length);
++    }
++    System.out.println(cb.readableBytes()); 
++    System.out.println(cb.nioBufferCount()); 
++    for (ByteBuffer bb : cb.nioBuffers()){
++      System.out.println(bb.capacity() +":"+bb.remaining());
++    }
++  }
++}
+
+Property changes on: src/core/org/apache/hadoop/ipc/CompositeByteBuffer.java
+___________________________________________________________________
+Added: svn:executable
+## -0,0 +1 ##
++*
+\ No newline at end of property
+Index: src/core/org/apache/hadoop/ipc/Server.java
+===================================================================
+--- src/core/org/apache/hadoop/ipc/Server.java	(revision 376481)
++++ src/core/org/apache/hadoop/ipc/Server.java	(working copy)
+@@ -19,10 +19,10 @@
+ package org.apache.hadoop.ipc;
+ 
+ import java.io.ByteArrayInputStream;
+-import java.io.ByteArrayOutputStream;
+ import java.io.DataInputStream;
+ import java.io.DataOutputStream;
+ import java.io.IOException;
++import java.io.OutputStream;
+ import java.net.BindException;
+ import java.net.InetAddress;
+ import java.net.InetSocketAddress;
+@@ -50,6 +50,7 @@
+ import java.util.concurrent.BlockingQueue;
+ import java.util.concurrent.ConcurrentHashMap;
+ import java.util.concurrent.atomic.AtomicLong;
++import java.util.concurrent.atomic.AtomicReference;
+ 
+ import org.apache.commons.logging.Log;
+ import org.apache.commons.logging.LogFactory;
+@@ -95,9 +96,9 @@
+    * Initial and max size of response buffer
+    */
+   static final String CONF_INITIAL_RESP_BUF_SIZE_KEY = "ipc.server.responsebuffer.initsize";
+-  static final String CONF_MAX_RESP_BUF_SIZE_KEY = "ipc.server.responsebuffer.maxsize";      
++  static final String CONF_MAX_RESP_BUF_SIZE_KEY = "ipc.server.responsebuffer.maxsize";    
+   static final int INITIAL_RESP_BUF_SIZE_DEFAULT = 10240;
+-  static final int MAX_RESP_BUF_SIZE_DEFAULT = 1024 * 1024;      
++  static final int MAX_RESP_BUF_SIZE_DEFAULT = 1024 * 1024;    
+   
+   public static final Log LOG =
+     LogFactory.getLog(Server.class);
+@@ -288,9 +289,6 @@
+   
+   private Configuration conf;
+ 
+-  private final int maxRespBufSize;
+-  private final int initRespBufSize;
+-  
+   private int maxQueueSize;
+   private int socketSendBufferSize;
+   private final boolean tcpNoDelay; // if T then disable Nagle's Algorithm
+@@ -346,9 +344,11 @@
+     private Connection connection;                // connection to client
+     private long timestamp;     // the time received when response is null
+                                    // the time served when response is not null
+-    private ByteBuffer response;                      // the response for this call
++    private ByteBuffer trunk;                      // the response for this call
++    private boolean lastTrunk = true;
+     private boolean delayResponse = false;
+     private Responder responder;
++    private CompositeByteBuffer response;
+ 
+     public Call(int id, Writable param, Connection connection, Responder responder) {
+       this.id = id;
+@@ -356,6 +356,7 @@
+       this.connection = connection;
+       this.timestamp = System.currentTimeMillis();
+       this.response = null;
++      this.trunk = null; 
+       this.responder = responder;
+     }
+     
+@@ -364,10 +365,14 @@
+       return param.toString() + " from " + connection.toString();
+     }
+ 
+-    public void setResponse(ByteBuffer response) {
++    public void setResponse(CompositeByteBuffer response) {
+       this.response = response;
+     }
+     
++    public void setTrunk(ByteBuffer trunk) {
++      this.trunk = trunk;
++    }
++    
+     public synchronized void delayResponse() {
+       this.delayResponse = true;
+     }
+@@ -709,7 +714,6 @@
+     private int pending;         // connections waiting to register
+     
+     final static int PURGE_INTERVAL = 900000; // 15mins
+-
+     Responder() throws IOException {
+       this.setName("IPC Server Responder");
+       this.setDaemon(true);
+@@ -749,26 +753,26 @@
+           // long time, discard them.
+           //
+           LOG.debug("Checking for old call responses.");
+-          ArrayList<Call> calls;
++          ArrayList<Connection> connections;
+           
+           // get the list of channels from list of keys.
+           synchronized (writeSelector.keys()) {
+-            calls = new ArrayList<Call>(writeSelector.keys().size());
++            connections = new ArrayList<Connection>(writeSelector.keys().size());
+             iter = writeSelector.keys().iterator();
+             while (iter.hasNext()) {
+               SelectionKey key = iter.next();
+-              Call call = (Call)key.attachment();
+-              if (call != null && key.channel() == call.connection.channel) { 
+-                calls.add(call);
++              Connection connection = (Connection)key.attachment();
++              if (connection != null && key.channel() == connection.channel) { 
++                connections.add(connection);
+               }
+             }
+           }
+           
+-          for(Call call : calls) {
++          for(Connection connection : connections) {
+             try {
+-              doPurge(call, now);
++              doPurge(connection, now);
+             } catch (IOException e) {
+-              LOG.warn("Error in purging old calls " + e);
++              LOG.warn("Error in purging old connection " + e);
+             }
+           }
+         } catch (OutOfMemoryError e) {
+@@ -788,17 +792,18 @@
+     }
+ 
+     private void doAsyncWrite(SelectionKey key) throws IOException {
+-      Call call = (Call)key.attachment();
+-      if (call == null) {
++      Connection connection = (Connection)key.attachment();
++      if (connection == null) {
+         return;
+       }
+-      if (key.channel() != call.connection.channel) {
++      if (key.channel() != connection.channel) {
+         throw new IOException("doAsyncWrite: bad channel");
+       }
+ 
+-      synchronized(call.connection.responseQueue) {
+-        if (processResponse(call.connection.responseQueue, false)) {
++      synchronized(connection.responseQueue) {
++        if (processResponse(connection.responseQueue, false)) {
+           try {
++            key.attach(null);
+             key.interestOps(0);
+           } catch (CancelledKeyException e) {
+             /* The Listener/reader might have closed the socket.
+@@ -806,7 +811,7 @@
+              * ever fire.
+              * This warning could be removed.
+              */
+-            LOG.warn("Exception while changing ops : " + e);
++//            LOG.warn("Exception while changing ops : " + e);
+           }
+         }
+       }
+@@ -816,12 +821,12 @@
+     // Remove calls that have been pending in the responseQueue 
+     // for a long time.
+     //
+-    private void doPurge(Call call, long now) throws IOException {
+-      LinkedList<Call> responseQueue = call.connection.responseQueue;
++    private void doPurge(Connection connection, long now) throws IOException {
++      LinkedList<Call> responseQueue = connection.responseQueue;
+       synchronized (responseQueue) {
+         Iterator<Call> iter = responseQueue.listIterator(0);
+         while (iter.hasNext()) {
+-          call = iter.next();
++          Call call = iter.next();
+           if (now > call.timestamp + PURGE_INTERVAL) {
+             closeConnection(call.connection);
+             break;
+@@ -836,7 +841,7 @@
+     private boolean processResponse(LinkedList<Call> responseQueue,
+                                     boolean inHandler) throws IOException {
+       boolean error = true;
+-      boolean done = false;       // there is more data for this channel.
++      AtomicReference<Boolean> done = new AtomicReference<Boolean> (false); // there is more data for this channel.
+       int numElements = 0;
+       Call call = null;
+       try {
+@@ -861,21 +866,25 @@
+           //
+           // Send as much data as we can in the non-blocking fashion
+           //
+-          int numBytes = channelWrite(channel, call.response);
++          int numBytes = channelWrite(channel, call.trunk);
+           if (numBytes < 0) {
+             return true;
+           }
+-          if (!call.response.hasRemaining()) {
+-            call.connection.decRpcCount();
+-            if (numElements == 1) {    // last call fully processes.
+-              done = true;             // no more data for this channel.
++          if (!call.trunk.hasRemaining()) {
++            if (!call.lastTrunk) {
++              done.set(false); //more call-chunks pending to be sent.
+             } else {
+-              done = false;            // more calls pending to be sent.
++              call.connection.decRpcCount();
++              if (numElements == 1) {    // last call fully processes.
++                done.set(true);            // no more data for this channel.
++              } else {
++                done.set(false);            // more calls pending to be sent.
++              }
++              if (LOG.isDebugEnabled()) {
++                LOG.debug(getName() + ": responding to #" + call.id + " from " +
++                    call.connection + " Wrote " + numBytes + " bytes.");
++              }
+             }
+-            if (LOG.isDebugEnabled()) {
+-              LOG.debug(getName() + ": responding to #" + call.id + " from " +
+-                        call.connection + " Wrote " + numBytes + " bytes.");
+-            }
+           } else {
+             //
+             // If we were unable to write the entire response out, then 
+@@ -884,21 +893,7 @@
+             call.connection.responseQueue.addFirst(call);
+             
+             if (inHandler) {
+-              // set the serve time when the response has to be sent later
+-              call.timestamp = System.currentTimeMillis();
+-              
+-              incPending();
+-              try {
+-                // Wakeup the thread blocked on select, only then can the call 
+-                // to channel.register() complete.
+-                writeSelector.wakeup();
+-                channel.register(writeSelector, SelectionKey.OP_WRITE, call);
+-              } catch (ClosedChannelException e) {
+-                //Its ok. channel might be closed else where.
+-                done = true;
+-              } finally {
+-                decPending();
+-              }
++              registerWriteSelector(channel, call, done);
+             }
+             if (LOG.isDebugEnabled()) {
+               LOG.debug(getName() + ": responding to #" + call.id + " from " +
+@@ -911,22 +906,58 @@
+       } finally {
+         if (error && call != null) {
+           LOG.warn(getName()+", call " + call + ": output error");
+-          done = true;               // error. no more data for this channel.
++          done.set(true);            // error. no more data for this channel.
+           closeConnection(call.connection);
+         }
+       }
+-      return done;
++      return done.get();
+     }
++    
++    public void registerWriteSelector(SocketChannel channel, Call call, AtomicReference<Boolean> done) {
++      // set the serve time when the response has to be sent later
++      call.timestamp = System.currentTimeMillis();
++      incPending();
++      try {
++        // Wakeup the thread blocked on select, only then can the call 
++        // to channel.register() complete.
++        writeSelector.wakeup();
++        channel.register(writeSelector, SelectionKey.OP_WRITE, call.connection);
++      } catch (ClosedChannelException e) {
++        //Its ok. channel might be closed else where.
++        if (done != null)
++          done.set(true);
++      } finally {
++        decPending();
++      }
++    }
+ 
+     //
+     // Enqueue a response from the application.
+     //
+     void doRespond(Call call) throws IOException {
+       synchronized (call.connection.responseQueue) {
+-        call.connection.responseQueue.addLast(call);
+-        if (call.connection.responseQueue.size() == 1) {
++        for (int i =0 ; i< call.response.nioBufferCount(); i++) {
++          ByteBuffer buffer = call.response.nioBuffer(i);
++          Call ci = new Call(call.id, call.param, call.connection, call.responder);
++          buffer.flip();
++          ci.setTrunk(buffer);
++          if (i < call.response.nioBufferCount() -1) {
++            ci.lastTrunk = false;
++          }
++          ci.timestamp = call.timestamp;
++          call.connection.responseQueue.addLast(ci);
++        }
++        boolean flag = false;
++        if (call.response.nioBufferCount() > 1) {
++          flag = true;
++        }
++        if (call.connection.responseQueue.size() == call.response.nioBufferCount()) {
+           processResponse(call.connection.responseQueue, true);
+         }
++        call.response = null;
++        if (flag) { //multy chucks should register channel.
++          registerWriteSelector(call.connection.channel, call, null);
++        }
+       }
+     }
+ 
+@@ -1181,7 +1212,6 @@
+     public void run() {
+       LOG.info(getName() + ": starting");
+       SERVER.set(Server.this);
+-      ByteArrayOutputStream buf = new ByteArrayOutputStream(initRespBufSize);
+       while (running) {
+         try {
+           Call call = callQueue.take(); // pop the queue; maybe blocked here
+@@ -1206,7 +1236,19 @@
+           }
+           UserGroupInformation.setCurrentUGI(previous);
+           
+-          buf.reset();
++          final CompositeByteBuffer cbuf = new CompositeByteBuffer(1024 * 16, 1024 * 1024 * 4);
++          
++          OutputStream buf = new OutputStream() {
++            @Override
++            public void write(int b) throws IOException {
++              cbuf.writeByte(b);
++            }
++            @Override
++            public void write(byte[] b, int off, int len) throws IOException {
++              cbuf.writeBytes(b, off, len);
++            }
++          };
++          
+           DataOutputStream out = new DataOutputStream(buf);
+           out.writeInt(call.id);                // write call id
+           if (call.connection.serverVersion == Server.V0_20_X_VERSION
+@@ -1225,20 +1267,17 @@
+           }
+           
+           if (LOG.isDebugEnabled()) {
+-            LOG.debug("Responding " + buf.size() + " bytes for call "
++            LOG.debug("Responding " + out.size() + " bytes for call "
+                 + call.toString());
+           }
+           
+           // In order to call Server.isvCDH3client() in value.write(out)
+           // CurCall.set(null) move here
+           CurCall.set(null);
+-          call.setResponse(ByteBuffer.wrap(buf.toByteArray()));
+-          // Discard the large buf and reset it back to
+-          // smaller size to freeup heap
+-          if (buf.size() > maxRespBufSize) {
+-            LOG.warn("Large response size " + buf.size() + " for call "
+-                + call.toString());
+-            buf = new ByteArrayOutputStream(initRespBufSize);
++          call.setResponse(cbuf);
++          if (cbuf.readableBytes() > 1048576) {
++                        LOG.warn("Large response size " + cbuf.readableBytes() + " for call "
++                            + call.toString());
+           }
+           if (!call.delayed()) {
+             responder.doRespond(call);
+@@ -1300,12 +1339,7 @@
+     this.rpcMetrics = new RpcMetrics(serverName,
+                           Integer.toString(this.port), this);
+     this.tcpNoDelay = conf.getBoolean("ipc.server.tcpnodelay", false);
+-    this.maxRespBufSize = conf.getInt(CONF_MAX_RESP_BUF_SIZE_KEY,
+-                                      MAX_RESP_BUF_SIZE_DEFAULT);
+-    this.initRespBufSize = conf.getInt(CONF_INITIAL_RESP_BUF_SIZE_KEY,
+-                                       INITIAL_RESP_BUF_SIZE_DEFAULT);
+ 
+-
+     // Create the responder here
+     responder = new Responder();
+   }
