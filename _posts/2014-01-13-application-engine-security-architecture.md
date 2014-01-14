@@ -1,6 +1,6 @@
 ---
 layout: post
-title: "application engine security architecture"
+title: "Application engine security architecture"
 description: ""
 category: paas 
 tags: [security, PAAS]
