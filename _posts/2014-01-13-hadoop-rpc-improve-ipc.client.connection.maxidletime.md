@@ -197,7 +197,44 @@ nn上的每个改动哪怕是配置的修改都需要相当谨慎，`ipc.client.
 </tr>
 </table>
 
-注：PeakThread这项指标笼统的反应了集群的并发度。
+注：PEAK_THREAD_COUNT统计方式：
+
+```java
+/**
+   * An updater that tracks the peak thread count. If the number exceeds
+   * the threshold, throw a RuntimeException to failed this task.
+   */
+  class ThreadCountUpdater {
+    private ThreadMXBean threadMXBean; 
+    private int preThreadCount = 0;
+    private Counters.Counter threadCountCounter;
+    
+    public ThreadCountUpdater() {
+    }
+    
+    void updateCounters() {
+      if (threadCountCounter == null || threadMXBean == null) {
+        threadMXBean = ManagementFactory.getThreadMXBean();
+        threadCountCounter = counters.findCounter(Counter.PEAK_THREAD_COUNT);
+      }
+      int newThreadCount = threadMXBean.getThreadCount();
+      if (preThreadCount < newThreadCount) {
+        threadCountCounter.increment(newThreadCount - preThreadCount);
+        preThreadCount = newThreadCount;
+      }
+      
+      int threadCountLimit = conf.getInt("mapred.task.threadcount.limit", -1);
+      if (threadCountLimit != -1 && preThreadCount > threadCountLimit) {
+        throw new RuntimeException("peak thread count is exceeded: peak= " + preThreadCount
+            + " limit= " + threadCountLimit);
+      }
+    }
+  }
+```
+可以看到PEAK_THREAD_COUNT不能精确的表示集群某个时刻的并发度，但可以从宏观上体现集群的并发度。
+
+测试总结
+---
 
 通过job的各项指标的细节比较，发现参数调整前后job的 行为基本一致。对job的 调度、连接及rpc响应时间 基本没有影响，
 
