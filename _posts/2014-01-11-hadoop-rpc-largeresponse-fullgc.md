@@ -254,6 +254,12 @@ final CompositeByteBuffer cbuf = new CompositeByteBuffer(1024 * 16, 1024 * 1024 
     }
 ```
 
+有几个点需要注意：
+
++ 内存改为每次申请，序列化完成后不再做`ByteBuffer.wrap(buf.toByteArray())`， 而是直接将CompositeByteBuffer设置为response.
++ 一个大的response拆成多个小的response，并封装成call， 由于callqueue是排序的，因此在responsequeue中放多个拆分后的小的call不会影响发送
+
+
 代码详见：[Server.java][server.code]
 
 [patch下载][patch]
