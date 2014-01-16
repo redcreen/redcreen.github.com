@@ -277,9 +277,11 @@ final CompositeByteBuffer cbuf = new CompositeByteBuffer(1024 * 16, 1024 * 1024 
 + 内存改为每次申请，序列化完成后不再做`ByteBuffer.wrap(buf.toByteArray())`， 而是直接将CompositeByteBuffer设置为response.
 + 一个大的response拆成多个小的response，并封装成call， 由于callqueue是排序的，因此在responsequeue中放多个拆分后的小的call不会影响发送
 
+改进后的优势：
 
-
-
+1. 128M内存分配变为4k 8k 16k 32k 64k 128k 256k 512k 1m 4m 4m ... 4m ,总内存分配约为133M，相比于767M， 内存分配上有了极大的减少。
+2. 不再需要分配大的连续内存，当old区内存碎片比较严重时，不再因为大内存的分配引发promotion failed.
+3. 分配的内存大小基本是固定的，便于内存的重复利用。
 
 参考文章：
 
