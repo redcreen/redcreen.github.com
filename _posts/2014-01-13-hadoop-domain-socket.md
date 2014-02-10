@@ -76,6 +76,7 @@ nrFiles=2 fileSize=10240M
 + tcp socket传输数据，checksum在关闭后，性能提升了1.5倍
 + local read:，checksum在关闭后，性能提升了5倍
 
+[更详细的测试结果][testdomainsocket] 
 
 当磁盘不是瓶颈时，checksum是瓶颈
 当checksum关闭后，网络会是瓶颈。
@@ -87,5 +88,7 @@ local read 开启后，可以大量的节省网络的开销。
 1. 对不同数据采取不同的读策略，对数据完整性要求高的开启checksum， 对数据完整性要求不高的关闭checksum
 2. 调整datanode 校验block checksum的周期。
 
+
 [unix domain socket]: http://zh.wikipedia.org/wiki/Unix_domain_socket
+[testdomainsocket]:/assets/other/testdomainsocket.tar.gz
 
