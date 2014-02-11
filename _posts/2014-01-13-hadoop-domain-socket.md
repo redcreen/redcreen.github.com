@@ -24,6 +24,7 @@ Domain Socket介绍
 </property>
 <property>
     <name>dfs.domain.socket.path</name>
+    <!--注意socket path的父目录权限需要是755-->
     <value>/home/hadoop/cluster-data/dfs_domain_socket_path</value>
 </property>
 <property>
