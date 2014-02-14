@@ -87,9 +87,9 @@ local read 开启后，可以大量的节省网络的开销。
 考虑到磁盘文件损坏的可能性，可考虑：
 
 1. 对不同数据采取不同的读策略，对数据完整性要求高的开启checksum， 对数据完整性要求不高的关闭checksum
-2. 调整datanode 校验block checksum的周期。
+2. 调整datanode 校验block 的周期。参数：dfs.datanode.scan.period.hours，默认值21天.
 
 
 [unix domain socket]: http://zh.wikipedia.org/wiki/Unix_domain_socket
 [testdomainsocket]:/assets/other/testdomainsocket.tar.gz
-
+[BerkeleySocketApi]:http://zh.wikipedia.org/wiki/Berkeley%E5%A5%97%E6%8E%A5%E5%AD%97
