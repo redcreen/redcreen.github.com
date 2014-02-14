@@ -1,13 +1,13 @@
 ---
 layout: post
-title: "test lzo in hdfs"
-description: ""
+title: "lzo demo in hdfs"
+description: "lzo gzip native"
 category: hadoop 
 tags: [hadoop, native]
 ---
 {% include JB/setup %}
 
-一个简单的实例演示如何在ＨＤＦＳ中使用LZO压缩。
+一个简单的实例演示如何在ＨＤＦＳ中使用LZO（gzip）压缩。
 
 ```java
 import java.io.DataInputStream;
@@ -24,7 +24,7 @@ import org.apache.hadoop.io.compress.CompressionCodecFactory;
 import org.apache.hadoop.io.compress.CompressionInputStream;
 import org.apache.hadoop.io.compress.CompressionOutputStream;
 
-public class HdfsWrite {
+public class CompressTest {
 
   public static void main(String[] args) throws Exception {
     System.setProperty("java.library.path", "/home/redcreen/hadoop-current/lib/native/Linux-amd64-64");
@@ -38,14 +38,15 @@ public class HdfsWrite {
     
     conf.set(
         "io.compression.codecs",
-        "org.apache.hadoop.io.compress.DefaultCodec,org.apache.hadoop.io.compress.LzoCodec");
+        "org.apache.hadoop.io.compress.DefaultCodec,org.apache.hadoop.io.compress.LzoCodec,org.apache.hadoop.io.compress.GzipCodec");
     conf.set("io.compression.codec.lzo.class",
         "org.apache.hadoop.io.compress.LzoCodec");
+    conf.set("io.compression.codec.gzip.class", "org.apache.hadoop.io.compress.GzipCodec");
     CompressionCodecFactory codecFactory = new CompressionCodecFactory(conf);
     
     FileSystem fs = FileSystem.get(conf);
 
-    Path path = new Path("h1.lzo_deflate");
+    Path path = new Path("h1.lzo_deflate"); //h1.gz
     CompressionCodec codec = codecFactory.getCodec(path);
     
     OutputStream outputStream = fs.create(path,true);
