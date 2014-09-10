@@ -15,7 +15,7 @@ tags: [hadoop, rpc]
 hdfs启动后一切正常，当运维将参数`?`改回后，突然出现了102个deadnode,且这些datanode的日志中都存在如下类似的记录：
 
 ```java
-java.io.IOException: Call to /10.148.xxx.xxx:9005 failed on local exception: java.io.EOFException
+java.io.IOException: Call to /xxx.xxx.xxx.xxx:xxxx failed on local exception: java.io.EOFException
         at org.apache.hadoop.ipc.Client.wrapException(Client.java:783)
         at org.apache.hadoop.ipc.Client.call(Client.java:746)
         at org.apache.hadoop.ipc.RPC$Invoker.invoke(RPC.java:230)
