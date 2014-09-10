@@ -25,7 +25,7 @@ Domain Socket介绍
 <property>
     <name>dfs.domain.socket.path</name>
     <!--注意socket path的父目录权限需要是755-->
-    <value>/home/hadoop/cluster-data/dfs_domain_socket_path</value>
+    <value>${path}/dfs_domain_socket_path</value>
 </property>
 <property>
     <name>dfs.client.read.shortcircuit.skip.checksum</name>
@@ -48,12 +48,12 @@ Domain Socket介绍
 测试环境
 
 + 2台测试服务器，一台部署jobtraker, 另外一台部署namenode、datanode、tasktracker.
-+ java version "1.6.0_32"  Java(TM) SE Runtime Environment (build 1.6.0_32-b05) OpenJDK (Taobao) 64-Bit Server VM (build 20.0-b12-internal, mixed mode)
++ java version "1.6.0_32"  Java(TM) SE Runtime Environment (build 1.6.0_32-b05) OpenJDK 64-Bit Server VM (build 20.0-b12-internal, mixed mode)
 + Linux r65g02003.cm10 2.6.18-164.11.1.el5 #1 SMP Wed Jan 6 13:26:04 EST 2010 x86_64 x86_64 x86_64 GNU/Linux
 + Mem: 188G cpu core: 32  Intel(R) Xeon(R) CPU E5-2690 0 @ 2.90GHz
 + bin/hadoop jar hadoop-0.19.1-dc-mapred-test.jar TestDFSIO -read -nrFiles $nrFiles -fileSize $fileSize
 
-**hadoop version : yunti-100.9 patch domain socket**
+**hadoop version : **-100.9 patch domain socket**
 
 nrFiles=2 fileSize=10240M
 
